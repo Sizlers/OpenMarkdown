@@ -1,6 +1,6 @@
 {
   "name": "openmarkdown",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A polished terminal markdown viewer built with OpenTUI.",
   "license": "MIT",
   "repository": {
