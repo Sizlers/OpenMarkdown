@@ -16,7 +16,7 @@ import { extname, join, relative, resolve } from "node:path"
 import { buildBlockRenderable, findMatchesInBlock, parseMarkdownBlocks, type MarkdownBlock, type Match } from "./markdown"
 import { themes, themeOrder, type ThemeName } from "./theme"
 
-type CommandId = "search" | "theme" | "refresh" | "open"
+type CommandId = "search" | "theme" | "refresh" | "open" | "edit"
 
 type AppMode = "view" | "search" | "commands" | "themes" | "files"
 
@@ -45,6 +45,7 @@ const CONFIG_PATH = join(CONFIG_DIR, "config.json")
 const PICKER_ROOT = process.cwd()
 const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown", ".mdx", ".mdown", ".mkd", ".txt"])
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", ".sst", ".astro", "dist", "build"])
+const EDIT_REQUEST_EXIT_CODE = 91
 
 class MarkdownApp {
   private renderer: CliRenderer
@@ -75,6 +76,8 @@ class MarkdownApp {
   private selectionListener: ((event: ParsedKey) => void) | null = null
   private fileReloading = false
   private pendingScrollTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingStatusTimer: ReturnType<typeof setTimeout> | null = null
+  private statusMessage = ""
 
   constructor(renderer: CliRenderer, initialPath?: string) {
     this.renderer = renderer
@@ -216,6 +219,7 @@ class MarkdownApp {
 
     const commandOptions: SelectOption[] = [
       { name: "Open file", description: "Browse markdown files", value: "open" },
+      { name: "Edit current file", description: "Open in your default editor", value: "edit" },
       { name: "Search", description: "Open search bar", value: "search" },
       { name: "Theme Finder", description: "Browse available themes", value: "theme" },
       { name: "Refresh", description: "Reload current file", value: "refresh" },
@@ -324,6 +328,7 @@ class MarkdownApp {
       const value = option.value as CommandId
       this.hideCommandPalette()
       if (value === "open") void this.showFilePalette()
+      if (value === "edit") void this.editCurrentFile()
       if (value === "search") this.showSearch()
       if (value === "theme") this.showThemePalette()
       if (value === "refresh") void this.refresh()
@@ -515,7 +520,7 @@ class MarkdownApp {
     if (!this.documentRoot) return
 
     const theme = themes[this.themeName]
-    this.blocks = parseMarkdownBlocks(this.source, theme)
+    this.blocks = parseMarkdownBlocks(this.source, theme, { maxWidth: this.getDocumentMaxWidth() })
     this.matches = []
 
     if (this.documentRoot) {
@@ -544,7 +549,7 @@ class MarkdownApp {
 
       if (block.kind === "space") return
 
-      const spacing = this.getBlockSpacing(block.kind, index)
+      const spacing = this.getBlockSpacing(block, index)
 
       const renderable = new TextRenderable(this.renderer, {
         id: `doc-block-${index}`,
@@ -572,7 +577,8 @@ class MarkdownApp {
     const total = this.matches.length
     const active = total > 0 ? Math.min(this.activeMatchIndex + 1, total) : 0
     const searchStatus = this.query ? `  ${active}/${total}` : ""
-    const text = ` / search  o open  r refresh  t themes  n next  N prev  ctrl+p commands  q quit${searchStatus} `
+    const status = this.statusMessage ? `  ${this.statusMessage}` : ""
+    const text = ` / search  j/k scroll  e edit  o open  r refresh  t themes  n next  N prev  ctrl+p commands  q quit${searchStatus}${status} `
     if (this.footer) this.footer.content = text
   }
 
@@ -680,6 +686,21 @@ class MarkdownApp {
         return
       }
 
+      if ((key.name === "j" && !key.ctrl) || key.name === "down") {
+        this.scrollDocument(1)
+        return
+      }
+
+      if ((key.name === "k" && !key.ctrl) || key.name === "up") {
+        this.scrollDocument(-1)
+        return
+      }
+
+      if (key.name === "e" && !key.ctrl) {
+        void this.editCurrentFile()
+        return
+      }
+
       if (key.name === "n" && !key.shift) {
         this.nextMatch()
         return
@@ -692,7 +713,7 @@ class MarkdownApp {
     }
 
     this.renderer.keyInput.on("keypress", this.selectionListener)
-    this.renderer.on("resize", () => this.renderer.requestRender())
+    this.renderer.on("resize", () => this.rebuildDocument(true))
   }
 
   private showSearch(): void {
@@ -810,7 +831,17 @@ class MarkdownApp {
   }
 
   private scrollToActiveMatch(): void {
-    if (!this.matches.length) return
+    if (!this.matches.length) {
+      this.activeMatchIndex = 0
+      this.updateFooter()
+      this.renderer.requestRender()
+      return
+    }
+
+    if (this.activeMatchIndex >= this.matches.length) {
+      this.activeMatchIndex = this.matches.length - 1
+    }
+
     const match = this.matches[this.activeMatchIndex]
     this.scrollBox?.scrollChildIntoView(match.blockId)
     this.updateFooter()
@@ -823,6 +854,70 @@ class MarkdownApp {
       this.pendingScrollTimer = null
       this.scrollToActiveMatch()
     }, 0)
+  }
+
+  private scrollDocument(delta: number): void {
+    this.scrollBox?.scrollBy(delta / 5, "viewport")
+    this.renderer.requestRender()
+  }
+
+  private showStatus(message: string, duration = 3000): void {
+    if (this.pendingStatusTimer) clearTimeout(this.pendingStatusTimer)
+    this.pendingStatusTimer = null
+    this.statusMessage = message
+    this.updateFooter()
+    this.renderer.requestRender()
+
+    if (duration <= 0) return
+
+    this.pendingStatusTimer = setTimeout(() => {
+      this.pendingStatusTimer = null
+      this.statusMessage = ""
+      this.updateFooter()
+      this.renderer.requestRender()
+    }, duration)
+  }
+
+  private clearStatus(): void {
+    if (this.pendingStatusTimer) clearTimeout(this.pendingStatusTimer)
+    this.pendingStatusTimer = null
+    if (!this.statusMessage) return
+    this.statusMessage = ""
+    this.updateFooter()
+    this.renderer.requestRender()
+  }
+
+  private getEditableSourcePath(): string | null {
+    if (!this.sourcePath || this.sourcePath === "stdin") return null
+
+    const resolvedPath = resolve(this.sourcePath)
+    return existsSync(resolvedPath) ? resolvedPath : null
+  }
+
+  private async editCurrentFile(): Promise<void> {
+    const filePath = this.getEditableSourcePath()
+    if (!filePath) {
+      this.showStatus("Edit is only available for files on disk")
+      return
+    }
+
+    const controlFile = process.env.OPENMARKDOWN_CONTROL_FILE
+    if (!controlFile) {
+      this.showStatus("Edit mode requires the OpenMarkdown launcher")
+      return
+    }
+
+    this.clearStatus()
+
+    try {
+      await writeFile(controlFile, JSON.stringify({ action: "edit", filePath }), "utf8")
+      this.cleanup()
+      process.exit(EDIT_REQUEST_EXIT_CODE)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.showStatus(`Edit request failed: ${message}`)
+      process.exit(1)
+    }
   }
 
   private async refresh(): Promise<void> {
@@ -846,9 +941,14 @@ class MarkdownApp {
 
   private cleanup(): void {
     if (this.pendingScrollTimer) clearTimeout(this.pendingScrollTimer)
-    this.renderer.keyInput.off("keypress", this.selectionListener!)
-    this.selectionListener = null
-    this.renderer.destroy()
+    if (this.pendingStatusTimer) clearTimeout(this.pendingStatusTimer)
+    if (this.selectionListener) {
+      this.renderer.keyInput.off("keypress", this.selectionListener)
+      this.selectionListener = null
+    }
+    if (!this.renderer.isDestroyed) {
+      this.renderer.destroy()
+    }
   }
 
   isSearchActive(): boolean {
@@ -876,16 +976,32 @@ class MarkdownApp {
     this.searchValue.fg = this.mode === "search" ? theme.text : theme.muted
   }
 
-  private getBlockSpacing(kind: string, index: number): { top: number; bottom: number } {
-    if (kind === "heading") {
-      return { top: index === 0 ? 0 : 1, bottom: 1 }
+  private getBlockSpacing(block: MarkdownBlock, index: number): { top: number; bottom: number } {
+    if (block.kind === "heading") {
+      if (block.level === 1) {
+        return { top: index === 0 ? 0 : 2, bottom: 1 }
+      }
+
+      if (block.level === 2) {
+        return { top: index === 0 ? 0 : 1, bottom: 1 }
+      }
+
+      return { top: 1, bottom: 1 }
     }
 
-    if (kind === "code" || kind === "table" || kind === "quote" || kind === "list" || kind === "hr") {
+    if (block.kind === "paragraph") {
+      return { top: 0, bottom: 1 }
+    }
+
+    if (block.kind === "code" || block.kind === "table" || block.kind === "quote" || block.kind === "list" || block.kind === "hr") {
       return { top: 0, bottom: 1 }
     }
 
     return { top: 0, bottom: 0 }
+  }
+
+  private getDocumentMaxWidth(): number {
+    return Math.max(44, this.renderer.terminalWidth - 10)
   }
 }
 

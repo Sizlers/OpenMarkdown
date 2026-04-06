@@ -20,10 +20,37 @@ A second paragraph helps confirm vertical rhythm between blocks and heading spac
 2. Step two
 3. Step three
 
+## Task List
+
+- [x] Search highlights stay aligned with rendered text
+- [x] Headings feel distinct without overwhelming the page
+- [ ] Keep polishing edge cases as new markdown samples appear
+
+## Rich List Content
+
+- Primary item with nested detail
+  - Nested bullet with `inline code`
+  - Nested bullet with a [reference link](https://github.com/anomalyco/opentui)
+- Loose item with a follow-up paragraph
+
+  This second paragraph should align under the item body instead of collapsing into the marker column.
+
+- Item with quoted context
+  > A note inside a list should still feel nested, not smashed against the edge.
+
+- Item with code
+
+  ```ts
+  const nestedState = { ready: true }
+  ```
+
 ## Blockquote
 
 > Good terminal UI should feel quick, legible, and quiet.
 > Search should help you move, not interrupt you.
+>
+> - Quotes can contain lists
+> - And the structure should still read clearly
 
 ## Code Block
 
@@ -43,9 +70,17 @@ function nextIndex(current: number, total: number) {
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Rendering | Working | Headings, lists, tables, and code |
-| Search | In progress | Match jumping and highlighting |
-| Themes | Working | Includes dark, light, and Tokyo Night |
+| Rendering | Working | Headings, lists, tables, and `code` now hold together much better once the content stops being toy-sized and starts carrying actual explanation. |
+| Search | Working | Match jumping stays aligned in rich blocks even when the rendered presentation adds decorative rails, borders, or wrapped cell content. |
+| Themes | Working | Includes dark, light, and [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme), with enough contrast to keep denser documentation comfortable to scan. |
+
+## Dense Table
+
+| Area | Owner | Status | Risk | Notes |
+| --- | --- | --- | --- | --- |
+| Rendering | Terminal UI | Working | Medium | A dense comparison table should fall back to a stacked layout before the columns get so narrow that the content becomes harder to parse than the raw markdown. |
+| Search | Interaction | Working | Low | Search should still land on phrases inside the wrapped or stacked values instead of drifting because of decorative table chrome. |
+| Themes | Visual Design | Working | Low | Color contrast still needs to hold up once the table turns into a list of row cards with repeated labels and longer descriptions. |
 
 ## Mixed Content
 

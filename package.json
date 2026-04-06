@@ -29,8 +29,8 @@
     "access": "public"
   },
   "scripts": {
-    "dev": "bun run src/index.ts",
-    "start": "bun run src/index.ts",
+    "dev": "bun run src/runner.ts",
+    "start": "bun run src/runner.ts",
     "check": "tsc --noEmit",
     "prepublishOnly": "npm run check"
   },

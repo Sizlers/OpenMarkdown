@@ -7,7 +7,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const binDir = dirname(fileURLToPath(import.meta.url))
-const entryPath = join(binDir, "..", "src", "index.ts")
+const entryPath = join(binDir, "..", "src", "runner.ts")
 const args = [entryPath, ...process.argv.slice(2)]
 const defaultBunPath = join(homedir(), ".bun", "bin", "bun")
 const bunBinary = process.env.BUN_BINARY || (existsSync(defaultBunPath) ? defaultBunPath : "bun")
