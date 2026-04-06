@@ -1,0 +1,37 @@
+{
+  "name": "openmarkdown",
+  "version": "0.1.0",
+  "description": "A polished terminal markdown viewer built with OpenTUI.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "openmarkdown": "./bin/openmarkdown.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "sample-content.md"
+  ],
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "check": "tsc --noEmit",
+    "prepublishOnly": "npm run check"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.97",
+    "marked": "^15.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "typescript": "^5.8.3"
+  }
+}
