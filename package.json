@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "A polished terminal markdown viewer built with OpenTUI.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sizlers/OpenMarkdown.git"
+  },
+  "homepage": "https://github.com/Sizlers/OpenMarkdown#readme",
+  "bugs": {
+    "url": "https://github.com/Sizlers/OpenMarkdown/issues"
+  },
   "type": "module",
   "bin": {
     "openmarkdown": "./bin/openmarkdown.js"
